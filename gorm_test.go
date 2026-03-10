@@ -1,9 +1,11 @@
 package golang_orm
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"gorm.io/driver/mysql"
@@ -21,10 +23,21 @@ func OpenConnection() *gorm.DB {
 	driver := mysql.Open("root:root@tcp(127.0.0.1:3306)/golang_orm?charset=utf8mb4&parseTime=True&loc=Local")
 	db, err := gorm.Open(driver, &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Info),
+		//SkipDefaultTransaction: true,
+		//PrepareStmt:  true
 	})
 	if err != nil {
 		panic(err)
 	}
+
+	sql, err := db.DB()
+	if err != nil {
+		panic(err)
+	}
+	sql.SetMaxOpenConns(100)
+	sql.SetMaxIdleConns(10)
+	sql.SetConnMaxLifetime(30 * time.Minute)
+	sql.SetConnMaxIdleTime(5 * time.Minute)
 	return db
 }
 
@@ -731,4 +744,51 @@ func TestAggregationHavingGroupBy(t *testing.T) {
 		Joins("User").Group("User.id").Having("sum(balance) > ?", 1000000).Find(&result).Error
 	assert.Nil(t, err)
 	assert.Equal(t, 0, len(result))
+}
+
+func TestContext(t *testing.T) {
+	ctx := context.Background()
+	var users []User
+	err := db.Model(&User{}).WithContext(ctx).Find(&users).Error
+	assert.Nil(t, err)
+	assert.Equal(t, 22, len(users))
+}
+
+func BrokeWalletBalance(db *gorm.DB) *gorm.DB {
+	return db.Where("balance = ?", 0)
+}
+func SultanWalletBalance(db *gorm.DB) *gorm.DB {
+	return db.Where("balance > ?", 1000000)
+}
+
+func TestScope(t *testing.T) {
+	var wallets []Wallet
+	//pake koma kalau lebih dari 1
+	err := db.Scopes(BrokeWalletBalance).Find(&wallets).Error
+	assert.Nil(t, err)
+
+	wallets = []Wallet{}
+	err = db.Scopes(SultanWalletBalance).Find(&wallets).Error
+	assert.Nil(t, err)
+}
+func TestMigrator(t *testing.T) {
+	err := db.Migrator().AutoMigrate(&GuestBook{})
+	assert.Nil(t, err)
+}
+
+//hook
+
+func TestHook(t *testing.T) {
+	user := User{
+		Password: "Rahasia",
+		Name: Name{
+			FirstName:  "THIS IS FIRST NAME FOR HOOKS",
+			LastName:   "THIS IS LAST NAME FOR HOOKS",
+			MiddleName: "THIS IS MIDDLE NAME FOR HOOKS",
+		},
+	}
+	err := db.Create(&user).Error
+	assert.Nil(t, err)
+	assert.NotEqual(t, "", user.ID)
+	fmt.Print(user.ID)
 }

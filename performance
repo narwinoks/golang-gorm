@@ -1,0 +1,4 @@
+1.matikan auto transaction bila 1 table ->secara defaut hidup walapun 1 table
+2.cache prepare stagtement - > memory lebih besar
+3.jangan select * -> select field
+4.table split -> one to one relation
